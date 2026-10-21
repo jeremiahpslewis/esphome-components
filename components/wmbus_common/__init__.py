@@ -3,16 +3,13 @@ from collections import namedtuple
 from pathlib import Path
 
 import esphome.config_validation as cv
-from esphome.const import SOURCE_FILE_EXTENSIONS, CONF_ID
+from esphome.const import CONF_ID
 from esphome import codegen as cg
 
 CODEOWNERS = ["@SzczepanLeon", "@kubasaw"]
-CONF_DRIVERS = "drivers"
 
 wmbus_common_ns = cg.esphome_ns.namespace("wmbus_common")
 WMBusCommon = wmbus_common_ns.class_("WMBusCommon", cg.Component)
-
-# Enable .cpp files to be picked up as source files (wmbusmeters library uses .cpp)
 
 # createMeter() looks a configured type up by the name the driver passes to
 # di.setName()/di.addNameAlias(), which is not necessarily the file name -
@@ -61,8 +58,6 @@ DRIVERS = _collect_drivers()
 
 # Names usable as a meter type, aliases included.
 AVAILABLE_DRIVERS = set(DRIVERS)
-# Canonical names only, so that "drivers: all" does not list a driver twice.
-DRIVER_NAMES = {driver.name for driver in DRIVERS.values()}
 
 _registered_drivers = set()
 
@@ -76,10 +71,6 @@ validate_driver = cv.All(
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(WMBusCommon),
-        cv.Optional(CONF_DRIVERS, default=set()): cv.All(
-            lambda x: DRIVER_NAMES if x == "all" else set(x) if isinstance(x, list) else x,
-            {validate_driver},
-        ),
     }
 )
 

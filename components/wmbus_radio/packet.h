@@ -1,7 +1,6 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
-#include <ctime>
 #include <optional>
 #include <string>
 #include <vector>
@@ -50,9 +49,7 @@ public:
   int8_t rssi();
   std::string format();
 
-  std::vector<uint8_t> as_raw();
   std::string as_hex();
-  std::string as_rtlwmbus();
 
   void mark_as_handled();
   uint8_t handlers_count();

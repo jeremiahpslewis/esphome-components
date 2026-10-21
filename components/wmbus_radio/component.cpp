@@ -55,7 +55,6 @@ void Radio::loop() {
            frame->data().size(), frame->rssi(), toString(frame->link_mode()),
            frame->format().c_str());
 
-  uint8_t packet_handled = 0;
   for (auto &handler : this->handlers_)
     handler(&frame.value());
 
@@ -64,15 +63,14 @@ void Radio::loop() {
   else {
     ESP_LOGW(TAG, "Telegram not handled by any handler");
     Telegram t;
-    if (t.parseHeader(frame->data()) && t.addresses.empty()) {
+    t.parseHeader(frame->data());
+    if (t.addresses.empty()) {
       ESP_LOGW(TAG, "Check if telegram can be parsed on:");
     } else {
       ESP_LOGW(TAG, "Check if telegram with address %s can be parsed on:",
                t.addresses.back().id.c_str());
     }
-    ESP_LOGW(TAG,
-             (std::string{"https://wmbusmeters.org/analyze/"} + frame->as_hex())
-                 .c_str());
+    ESP_LOGW(TAG, "https://wmbusmeters.org/analyze/%s", frame->as_hex().c_str());
   }
 }
 

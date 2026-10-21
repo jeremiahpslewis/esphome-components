@@ -112,16 +112,6 @@ void Meter::handle_frame(wmbus_radio::Frame *frame) {
   }
 }
 
-std::string Meter::as_json(bool pretty_print) {
-  std::string json;
-  if (this->meter == nullptr)
-    return json;
-
-  this->meter->printMeter(this->last_telegram.get(), nullptr, nullptr, '\t',
-                          &json, nullptr, nullptr, nullptr, pretty_print);
-  return json;
-}
-
 optional<std::string> Meter::get_string_field(std::string field_name) {
   if (this->meter == nullptr)
     return {};

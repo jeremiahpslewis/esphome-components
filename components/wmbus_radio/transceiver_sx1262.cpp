@@ -191,18 +191,6 @@ int8_t SX1262::get_rssi() {
 
 const char *SX1262::get_name() { return TAG; }
 
-uint16_t SX1262::get_irq_status() {
-  uint8_t status[3] = {0};
-  this->wait_busy();
-  this->delegate_->begin_transaction();
-  this->delegate_->transfer(RADIOLIB_SX126X_CMD_GET_IRQ_STATUS);
-  status[0] = this->delegate_->transfer(0x00);  // NOP
-  status[1] = this->delegate_->transfer(0x00);  // IRQ status MSB
-  status[2] = this->delegate_->transfer(0x00);  // IRQ status LSB
-  this->delegate_->end_transaction();
-  return (status[1] << 8) | status[2];
-}
-
 uint8_t SX1262::read_register(uint16_t address) {
   uint8_t value = 0;
   this->spi_read_frame(RADIOLIB_SX126X_CMD_READ_REGISTER, {BYTE(address, 1), BYTE(address, 0), 0x00}, &value, 1);

@@ -2,8 +2,6 @@
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
 
-#include "esphome/components/time/real_time_clock.h"
-
 #include "esphome/components/wmbus_common/meters.h"
 #include "esphome/components/wmbus_radio/component.h"
 
@@ -23,13 +21,11 @@ public:
 
   void on_telegram(std::function<void()> &&callback);
 
-  std::string as_json(bool pretty_print = false);
   optional<std::string> get_string_field(std::string field_name);
   optional<float> get_numeric_field(std::string field_name);
 
 protected:
   LinkModeSet link_modes_;
-  time::RealTimeClock *rtc;
   wmbus_radio::Radio *radio;
 
   // Retained so the component can identify itself when meter is null.

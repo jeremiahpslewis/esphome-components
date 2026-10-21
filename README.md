@@ -1,263 +1,116 @@
-Version 5 based on Kuba's dirty [fork](https://github.com/IoTLabs-pl/esphome-components).
+Wireless M-Bus receiver for ESPHome, trimmed down to a single setup: an M5Stack Unit C6L (ESP32-C6 + SX1262) reading Sensus PolluCom F heat meters. Based on [SzczepanLeon/esphome-components](https://github.com/SzczepanLeon/esphome-components) version 5, which in turn builds on Kuba's [fork](https://github.com/IoTLabs-pl/esphome-components) and the [wmbusmeters](https://github.com/wmbusmeters/wmbusmeters) parser.
 
-# TODO:
-- Prepare packages for ready made boards (like UltimateReader) with displays, leds etc.
-- Aggresive cleanup of wmbusmeters classes/structs
-- Refactor traces/logs
+Tested against ESPHome 2026.10.0 with the ESP-IDF framework.
 
-# DONE:
-- Add long frame (>255 bytes) reception for SX1262
-- Add configurable frequency for CC1101 (300–928 MHz, default 868.95 MHz)
-- Add CC1101 support with FIFO overflow handling and errata workaround
-- Add support for SX1262 (with limited frame length)
-- Reuse CRCs and frame parsers from wmbusmeters
-- Refactor 3out6 decoder
-- Migrate to esp-idf and drop Arduino!
-- Add support for SX1276
-- Run receiver in separate task
-- Drop all non wmbus related components from rf code part
-- Allow to specify ASCII decription key
-- Divide codebase to separate components (radio for radio communication, meter for meters (on which sensor may subscribe) and common for wmbusmeters code)
-- Add triggers:
-  - Radio->on packet (allow to blink on frame/telegram)
-  - Meter->on telegram (allow e.g. to send whole telegram to MQTT)
-- Re-pull of wmbusmeters code from upstream
-- Reimplement TCP and UCP senders. Should be classes with common interface to use as action under Radio->on packet trigger
-- Reimplement HEX and RTLWMBUS formatter to use as parameter of TCP/UDP action
+## Components
 
+- `wmbus_radio` drives the SX1262 transceiver and passes received frames to the meters.
+- `wmbus_meter` decodes frames for one meter and feeds `sensor` / `text_sensor` entities.
+- `wmbus_common` is the wmbusmeters library. Only the `pollucomf` driver is kept.
 
-# Usage example:
+A complete configuration for the M5Stack Unit C6L is in [wm-bus-zentrale.yaml](wm-bus-zentrale.yaml).
+
 ```yaml
-esphome:
-  name: wmbus
-  friendly_name: WMBus
-  platformio_options:
-    upload_speed: 921600
-
 external_components:
-  - source: github://SzczepanLeon/esphome-components@main
+  - source: github://jeremiahpslewis/esphome-components@main
+    components: [wmbus_radio, wmbus_meter, wmbus_common]
+```
 
-esp32:
-  board: heltec_wifi_lora_32_V2
-  flash_size: 8MB
-  framework:
-    type: esp-idf
-  
-logger:
-  id: component_logger
-  level: DEBUG
-  baud_rate: 115200
+## Radio
 
-wifi:
-  networks:
-    - ssid: !secret wifi_ssid
-      password: !secret wifi_password
-
-api:
-
-web_server:
-  version: 3 
-
-time:
-  - platform: homeassistant
-
+```yaml
 spi:
-  clk_pin:
-    number: GPIO5
-    ignore_strapping_warning: true
-  mosi_pin: GPIO27
-  miso_pin: GPIO19
-
-socket_transmitter:
-  id: my_socket
-  ip_address: 192.168.1.1
-  port: 3333
-  protocol: TCP
-
-mqtt:
-  broker: test.mosquitto.org
-  port: 1883
-  client_id: some_client_id
+  clk_pin: GPIO20
+  mosi_pin: GPIO21
+  miso_pin: GPIO22
 
 wmbus_radio:
-  radio_type: SX1276
-  cs_pin: GPIO18
-  reset_pin: GPIO14
-  irq_pin: GPIO35
+  radio_type: SX1262
+  cs_pin: GPIO23
+  irq_pin: GPIO7
+  busy_pin: GPIO19
+  reset_pin: GPIO4
+  rx_gain: BOOSTED
+  rf_switch: true
+  has_tcxo: true
   on_frame:
     - then:
         - logger.log:
-            format: "RSSI: %ddBm T: %s (%d)"
-            args: [ frame->rssi(), frame->as_hex().c_str(), frame->data().size() ]
-    - then:
-        - repeat:
-            count: 3
-            then:
-              - output.turn_on: status_led
-              - delay: 100ms
-              - output.turn_off: status_led
-              - delay: 100ms
-    - mark_as_handled: True
-      then:
-        - mqtt.publish:
-            topic: wmbus-test/telegram_rtl
-            payload: !lambda return frame->as_rtlwmbus();
-    - mark_as_handled: True
-      then:
-        - socket_transmitter.send:
-            data: !lambda return frame->as_hex();
-
-wmbus_meter:
-  - id: electricity_meter
-    meter_id: 0x0101010101
-    type: amiplus
-    key: 00000000000000000000000000000000
-    mode: 
-      - T1
-      - C1
-  - id: heat_meter
-    meter_id: 12321
-    type: hydrocalm3
-    on_telegram:
-      then:
-        - wmbus_meter.send_telegram_with_mqtt:
-            topic: wmbus-test/telegram
-
-output:
-  - platform: gpio
-    id: vext_output
-    pin: GPIO21
-  - platform: gpio
-    id: oled_reset
-    pin: GPIO16
-    inverted: True
-  - platform: gpio
-    id: status_led
-    pin: GPIO25
-
-sensor:
-  - platform: wmbus_meter
-    parent_id: heat_meter
-    field: total_heating_kwh
-    device_class: energy
-    name: Zużycie energii cieplnej
-    accuracy_decimals: 4
-    state_class: total_increasing
-
-  - platform: wmbus_meter
-    parent_id: electricity_meter
-    field: current_power_consumption_kw
-    name: Moc aktualna
-    accuracy_decimals: 0
-    device_class: power
-    unit_of_measurement: W
-    state_class: measurement
-    filters:
-      - multiply: 1000
-
-  - platform: wmbus_meter
-    parent_id: electricity_meter
-    field: total_energy_consumption_kwh
-    name: Zużycie energii
-    accuracy_decimals: 3
-    device_class: energy
-    state_class: total_increasing
-
-  - platform: wmbus_meter
-    parent_id: electricity_meter
-    field: rssi_dbm
-    name: Electricity Meter RSSI
-
-text_sensor:
-  - platform: wmbus_meter
-    parent_id: electricity_meter
-    field: timestamp
-    name: Electricity Meter timestamp
-
-  - platform: wmbus_meter
-    parent_id: electricity_meter
-    field: timestamp_zulu
-    name: Electricity Meter timestamp zulu
-
-  - platform: wmbus_meter
-    parent_id: electricity_meter
-    field: current_alarms
-    name: Electricity Meter alarms
-```
-
-## Radio Configuration
-
-### CC1101
-For CC1101 radio, configure the SPI bus and specify the chip select and IRQ (GDO0) pins. The CC1101 has no hardware reset pin — it uses a software reset (SRES strobe) automatically. See [ESP32-C3_SuperMini_CC1101.yaml](ESP32-C3_SuperMini_CC1101.yaml) for a complete working example.
-
-```yaml
-spi:
-  clk_pin: GPIO5
-  mosi_pin: GPIO6
-  miso_pin: GPIO7
-
-wmbus_radio:
-  radio_type: CC1101
-  cs_pin: GPIO4
-  irq_pin: GPIO3
-  frequency: 868.95MHz   # Optional. Range: 300–928 MHz. Default: 868.95 MHz
+            format: "RSSI: %ddBm T: %s"
+            args: [ frame->rssi(), frame->as_hex().c_str() ]
 ```
 
 | Option | Required | Default | Description |
 |---|---|---|---|
-| `radio_type` | yes | — | Must be `CC1101` |
-| `cs_pin` | yes | — | SPI chip select pin |
-| `irq_pin` | yes | — | Interrupt pin (GDO0) |
-| `frequency` | no | `868.95MHz` | Operating frequency, 300–928 MHz |
+| `radio_type` | yes | | Must be `SX1262` |
+| `cs_pin` | yes | | SPI chip select pin |
+| `irq_pin` | yes | | DIO1, raised when a sync word is received |
+| `busy_pin` | no | | BUSY pin, recommended for reliable timing |
+| `reset_pin` | no | | Reset pin, may sit on an I/O expander |
+| `rx_gain` | no | `BOOSTED` | `BOOSTED` (better sensitivity) or `POWER_SAVING` |
+| `rf_switch` | no | `false` | Set to `true` if DIO2 controls the RF switch |
+| `has_tcxo` | no | `true` | Set to `false` if DIO3 does not drive an external TCXO |
+| `on_frame` | no | | Automation run for every received frame, with `frame` in scope. Set `mark_as_handled: true` to suppress the "not handled" warning for frames it consumes. |
 
-Tested on ESP32-C3 Super Mini + CC1101 v2.0 (E07-M1101D-SMA) blue board.
+The receiver listens on 868.95 MHz for T1 and C1 telegrams. Frames longer than 255 bytes are streamed out of the SX1262 buffer while they are still arriving.
 
-
-Another tested device: NodeMCU-32S (ESP-32S) Development Board, ESP-WROOM-32, ESP32 Dev Board + CC1101:
-
-```yaml
-spi:
-  clk_pin: GPIO33
-  mosi_pin: GPIO32
-  miso_pin: GPIO19
-
-wmbus_radio:
-  radio_type: CC1101
-  cs_pin: GPIO23
-  irq_pin: GPIO22
-  frequency: 868.95MHz   # Optional. Range: 300–928 MHz. Default: 868.95 MHz
-```
-
-For full example see: [ESP32-NodeMcu-32s_CC1101.yaml](ESP32-NodeMcu-32s_CC1101.yaml)
-
-
-### SX1276
-For SX1276 radio you need to configure SPI instance as usual in ESPHome and additionally specify reset pin and IRQ pin (as DIO1). Interrupts are triggered on non empty FIFO.
-
-### SX1262
-For SX1262 radio, the configuration is similar but with additional options:
+## Meter
 
 ```yaml
-wmbus_radio:
-  radio_type: SX1262
-  cs_pin: GPIO23
-  reset_pin: GPIO4
-  irq_pin: GPIO7
-  busy_pin: GPIO19           # Optional but recommended for proper timing
-  rx_gain: BOOSTED           # BOOSTED (default) or POWER_SAVING
-  rf_switch: false           # Set to true if DIO2 controls RF switch
-  has_tcxo: true             # By default, DIO3 controls an external TCXO
+wmbus_meter:
+  - id: heat_meter
+    meter_id: 0x12345678
+    type: pollucomf
+    key: 00112233445566778899AABBCCDDEEFF
+    mode:
+      - T1
+      - C1
 ```
 
-**SX1262-specific options:**
-- `busy_pin`: Optional GPIO for BUSY signal. Recommended for reliable operation.
-- `rx_gain`: RX gain mode - `BOOSTED` (better sensitivity, default) or `POWER_SAVING` (lower power)
-- `rf_switch`: Set to `true` if your board uses DIO2 to control the RF switch
-- `has_tcxo`: Set to `false` if your borad does not use DIO3 for control of an external TCXO
+| Option | Required | Default | Description |
+|---|---|---|---|
+| `meter_id` | yes | | Meter address. Write it with a `0x` prefix: the ID printed on the meter is hexadecimal, and a bare number is read as decimal. |
+| `type` | yes | | Driver name, `pollucomf` |
+| `key` | no | | AES key as 32 hex digits, or a 16 character ASCII string |
+| `mode` | no | `Any` | Link modes to accept: `T1`, `C1` or `Any` |
 
-Tested on M5Stack Stamp C6LoRa (ESP32-C6). 
+## Sensors
 
-In order to pull latest wmbusmeters code run:
+```yaml
+sensor:
+  - platform: wmbus_meter
+    parent_id: heat_meter
+    field: total_kwh
+    name: Heat energy
+    device_class: energy
+    state_class: total_increasing
+
+text_sensor:
+  - platform: wmbus_meter
+    parent_id: heat_meter
+    field: status
+    name: Heat meter status
+```
+
+`field` is a wmbusmeters field name followed by its unit. The pollucomf driver provides `total_kwh`, `total_m3`, `power_kw`, `flow_m3h`, `forward_c`, `return_c`, `target_kwh`, `target_m3`, `forward_max_c`, `return_max_c` and `flow_max_m3h` as numbers, and `status` and `target_date` as text. Every meter also has `rssi_dbm` (signal strength of the last telegram) and `timestamp` / `timestamp_zulu`. If `unit_of_measurement` is not set, it is derived from the unit suffix.
+
+## Stack size
+
+Telegrams are decoded in the main loop task, and wmbusmeters needs more stack than ESPHome's default of 8 KB. Raise it in the `esp32` section:
+
+```yaml
+esp32:
+  variant: esp32c6
+  framework:
+    type: esp-idf
+    advanced:
+      loop_task_stack_size: 32768
+```
+
+## Updating wmbusmeters
+
+To pull newer wmbusmeters code run:
 ```bash
 git subtree pull --prefix components/wmbus_common https://github.com/wmbusmeters/wmbusmeters.git <REF> --squash
 ```
+Upstream changes to drivers that were deleted here show up as modify/delete conflicts; resolve them by keeping the deletion.

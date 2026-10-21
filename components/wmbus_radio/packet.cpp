@@ -1,7 +1,5 @@
 #include "packet.h"
 
-#include <ctime>
-
 #include "esphome/components/wmbus_common/meters.h"
 #include "esphome/core/helpers.h"
 
@@ -159,31 +157,7 @@ LinkMode Frame::link_mode() { return this->link_mode_; }
 int8_t Frame::rssi() { return this->rssi_; }
 std::string Frame::format() { return this->format_; }
 
-std::vector<uint8_t> Frame::as_raw() { return this->data_; }
 std::string Frame::as_hex() { return format_hex(this->data_); }
-std::string Frame::as_rtlwmbus() {
-  const size_t time_repr_size = sizeof("YYYY-MM-DD HH:MM:SS.00Z");
-  char time_buffer[time_repr_size] = "1970-01-01 00:00:00.00Z";
-  auto t = std::time(NULL);
-  auto *tm_info = std::gmtime(&t);
-  if (tm_info != nullptr) {
-    std::strftime(time_buffer, time_repr_size, "%F %T.00Z", tm_info);
-  }
-
-  auto output = std::string{};
-  output.reserve(2 + 5 + 24 + 1 + 4 + 5 + 2 * this->data_.size() + 1);
-
-  output += linkModeName(this->link_mode_); // size 2
-  output += ";1;1;";                        // size 5
-  output += time_buffer;                    // size 24
-  output += ';';                            // size 1
-  output += std::to_string(this->rssi_);    // size up to 4
-  output += ";;;0x";                        // size 5
-  output += this->as_hex();                 // size 2 * frame.size()
-  output += "\n";                           // size 1
-
-  return output;
-}
 
 void Frame::mark_as_handled() { this->handlers_count_++; }
 uint8_t Frame::handlers_count() { return this->handlers_count_; }
